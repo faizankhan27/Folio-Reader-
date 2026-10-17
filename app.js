@@ -62,34 +62,42 @@ async function parse(buf,name,say){
   /* group into chapters */
   const re=/^(chapter|part|book|section|prologue|epilogue|introduction|preface|foreword|afterword|acknowledg)/i;
   const chs=[];let c=null;
+  const fmc=()=>{if(!c){c={t:"Front matter",b:[],fm:1};chs.push(c)}};
   blocks.forEach(b=>{
-    if(b.k==="h"){
+    if(b.k==="h"&&b.t.split(/\s+/).length<=9&&!/[,;]$/.test(b.t)){
       const isC=re.test(b.t)||/^(\d{1,3}|[ivxlc]{1,6})[.:]?$/i.test(b.t)||b.h>bodyH*1.5;
-      if(c&&!c.b.length){c.t=(c.t+" "+b.t).trim()}
+      if(c&&!c.b.length)c.t=(c.t+" "+b.t).trim();
       else if(isC){c={t:b.t,b:[]};chs.push(c)}
-      else{if(!c){c={t:name,b:[]};chs.push(c)}c.b.push(["h",b.t])}
-    }else{
-      if(!c){c={t:name,b:[]};chs.push(c)}
-      c.b.push(["p",b.t]);
-    }
+      else{fmc();c.b.push(["h",b.t])}
+    }else{fmc();c.b.push(["p",b.t])}
   });
-  return{title:name,pages:N,chapters:chs.filter(x=>x.b.length),added:Date.now()};
+  chs.forEach(x=>{x.b=x.b.filter(([k,t])=>!(k==="p"&&(t.match(/\bchapter\b/gi)||[]).length>=5))});
+  let cover="";
+  try{const p1=await pdf.getPage(1),v0=p1.getViewport({scale:1}),vp=p1.getViewport({scale:300/v0.width}),cv=document.createElement("canvas");cv.width=vp.width;cv.height=vp.height;await p1.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;cover=cv.toDataURL("image/jpeg",.72)}catch(e){}
+  return{title:name,pages:N,cover,chapters:chs.filter(x=>x.b.length&&!/^(table of )?contents$/i.test(x.t)),added:Date.now()};
 }
 
+const imgCover=f=>new Promise((res,rej)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const w=300,h=Math.round(im.height*w/im.width),c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",.82))};im.onerror=()=>rej(new Error("bad cover"));im.src=u});
+const pickCover=id=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=async()=>{const f=i.files[0];if(!f)return;const b=(await all()).find(x=>x.id===id);if(b){try{b.cover=await imgCover(f);put(b);showLib()}catch(e){$("#st").textContent="Couldn’t use that image."}}};i.click()};
 /* reader */
 let cur=null,secs=[],tick=false;
 function render(bk){
   let h="";
   bk.chapters.forEach((c,i)=>{
+    if(c.fm){h+='<section id="c'+i+'" class="fm">'+c.b.map(([k,t])=>"<p>"+esc(t)+"</p>").join("")+"</section>";return}
     const m=c.t.match(/^((?:chapter|part|book)\s+\w+)[.:\s–—-]+(.+)$/i);
-    h+='<section id="c'+i+'"><header class="op">'+(m?'<span class="lab">'+esc(m[1])+'</span>':"")+"<h2>"+esc(m?m[2]:c.t)+'</h2><i class="orn">❦</i></header>';
+    h+='<section id="c'+i+'"><header class="op">'+(m?'<span class="lab">'+esc(m[1])+"</span>":"")+"<h2>"+esc(m?m[2]:c.t)+'</h2><i class="orn">❦</i></header>';
     let first=true;
-    c.b.forEach(([k,t])=>{if(k==="h")h+="<h3>"+esc(t)+"</h3>";else{h+="<p"+(first?' class="f"':"")+">"+esc(t)+"</p>";first=false}});
+    c.b.forEach(([k,t])=>{
+      if(k==="h")h+="<h3>"+esc(t)+"</h3>";
+      else if(first){first=false;const w=t.split(" "),n=Math.min(3,w.length);h+='<p class="f"><span class="sc">'+esc(w.slice(0,n).join(" "))+"</span> "+esc(w.slice(n).join(" "))+"</p>"}
+      else h+="<p>"+esc(t)+"</p>";
+    });
     h+="</section>";
   });
   $("#book").innerHTML=h;
   secs=[...document.querySelectorAll("#book section")];
-  $("#tl").innerHTML=bk.chapters.map((c,i)=>'<li><button data-i="'+i+'">'+esc(c.t)+"</button></li>").join("");
+  $("#tl").innerHTML=bk.chapters.map((c,i)=>'<li><button data-i="'+i+'">'+esc(c.fm?"Front matter":c.t)+"</button></li>").join("");
 }
 function onScroll(){
   if(!cur||tick)return;tick=true;
@@ -115,17 +123,18 @@ async function showLib(){
   cur=null;closePanels();$("#read").hidden=true;$("#lib").hidden=false;$("#hb").dataset.v="lib";
   $("#ttl").textContent="Folio";$("#bar").style.transform="scaleX(0)";scrollTo(0,0);
   const bs=(await all()).sort((a,b)=>b.added-a.added);
-  $("#shelf").innerHTML=bs.length?bs.map(b=>'<li style="--sp:'+spine(b.title)+'"><button class="bk" data-id="'+b.id+'"><b>'+esc(b.title)+"</b><span>"+b.chapters.length+" chapters · "+b.pages+" pages · "+Math.round(LS.get("folio.p."+b.id,0)*100)+'% read</span></button><button class="rm" data-rm="'+b.id+'">Remove</button></li>').join(""):'<li class="empty">Your shelf is empty. Add a PDF to start reading.</li>';
+  $("#shelf").innerHTML=bs.length?bs.map(b=>'<li class="card" style="--sp:'+spine(b.title)+'"><button class="cv" data-id="'+b.id+'" aria-label="Open '+esc(b.title)+'">'+(b.cover?'<img alt="" src="'+b.cover+'">':"<i>"+esc(b.title)+"</i>")+'</button><div class="ti">'+esc(b.title)+'</div><div class="pg"><b style="width:'+Math.round(LS.get("folio.p."+b.id,0)*100)+'%"></b></div><div class="acts"><button data-cover="'+b.id+'">Cover</button><button class="rm" data-rm="'+b.id+'">Remove</button></div></li>').join(""):'<li class="empty">Your shelf is empty. Add a PDF to start reading.</li>';
 }
 async function addFiles(fl){
-  const st=$("#st");
+  const st=$("#st"),cf=$("#cv").files[0];
   for(const f of fl){
     if(!/pdf/i.test(f.type+f.name))continue;
     if(!window.pdfjsLib){st.textContent="The PDF engine didn’t load. Check your connection and reload.";return}
     try{
       st.textContent="Reading "+f.name+"…";
       const bk=await parse(await f.arrayBuffer(),f.name.replace(/\.pdf$/i,""),(i,n)=>st.textContent="Reading page "+i+" of "+n+"…");
-      bk.id=Date.now().toString(36);put(bk);st.textContent="";
+      if(cf){try{bk.cover=await imgCover(cf)}catch(e){}}
+      bk.id=Date.now().toString(36);put(bk);$("#cv").value="";st.textContent="";
       if(fl.length===1)return openBook(bk.id);
     }catch(e){st.textContent="Couldn’t read "+f.name+" ("+(e&&e.message||e)+"). Scanned PDFs with no selectable text aren’t supported yet."}
   }
@@ -142,10 +151,12 @@ $("#toc").onclick=()=>pan("#tp");
 $("#aa").onclick=()=>pan("#sp");
 $("#tl").onclick=e=>{const b=e.target.closest("button");if(!b)return;closePanels();document.getElementById("c"+b.dataset.i).scrollIntoView()};
 $("#shelf").onclick=e=>{
-  const o=e.target.closest(".bk"),r=e.target.closest(".rm");
+  const o=e.target.closest(".cv"),r=e.target.closest(".rm"),cv=e.target.closest("[data-cover]");
   if(o)openBook(o.dataset.id);
-  if(r){if(r.dataset.arm){del(r.dataset.rm);LS.set("folio.p."+r.dataset.rm,0);showLib()}else{r.dataset.arm=1;r.textContent="Tap again to remove"}}
+  if(cv)pickCover(cv.dataset.cover);
+  if(r){if(r.dataset.arm){del(r.dataset.rm);LS.set("folio.p."+r.dataset.rm,0);showLib()}else{r.dataset.arm=1;r.textContent="Tap again"}}
 };
+$("#cv").onchange=e=>{const f=e.target.files[0];$("#st").textContent=f?"Cover ready: "+f.name+". Now choose the PDF.":""};
 document.addEventListener("click",e=>{if(!e.target.closest(".pn,#toc,#aa"))closePanels()});
 addEventListener("scroll",onScroll,{passive:true});
 addEventListener("dragover",e=>e.preventDefault());

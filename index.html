@@ -20,15 +20,18 @@
 </header>
 
 <main id="lib">
-  <section class="hero">
+  <section class="hero"><div class="in">
     <h1>Folio</h1>
     <p class="lede">Your PDFs, re-set as books.</p>
-    <input id="f" class="pick" type="file" accept=".pdf,application/pdf" multiple aria-label="Add a PDF">
-  </section>
+    <div class="adds">
+      <label>PDF<input id="f" class="pick" type="file" accept=".pdf,application/pdf" multiple></label>
+      <label>Cover (optional)<input id="cv" class="pick alt" type="file" accept="image/*"></label>
+    </div>
+  </div></section>
   <div class="wrap">
     <p id="st" role="status"></p>
     <ul id="shelf"></ul>
-    <p class="note">Books are saved in this browser on this device. On a phone, the file picker can also open PDFs from Google Drive.</p>
+    <p class="note">Books are saved in this browser on this device. Pick a cover image before the PDF to use it; otherwise the first page becomes the cover. You can change a cover any time.</p>
   </div>
 </main>
 

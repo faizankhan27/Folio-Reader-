@@ -7,7 +7,7 @@ Turns messy PDFs into a clean, book-style reading experience, right in the brows
 - Automatic chapter detection with a table of contents
 - Three themes: Mahogany, Parchment, Midnight
 - Adjustable text size, line spacing and page width
-- Library with reading progress, saved on your device (IndexedDB)
+- Library shown as book covers (first page by default, or your own cover image), with reading progress, saved on your device (IndexedDB)
 - Works on phone and laptop browsers
 
 ## Run it
@@ -23,10 +23,10 @@ It's a static site with no build step. Open `index.html` in a browser, or host i
 - Needs an internet connection to load the PDF.js library and Google Fonts from CDNs.
 - Scanned PDFs without selectable text are not supported yet (would need OCR).
 - Books are stored in the browser on that device. Google Drive sync is not included yet.
-- Photos in `assets/` are the design inspiration; replace them with images you have the rights to use before publishing.
+- `assets/shelves.jpg` is the library header photo; replace it with an image you have the rights to use before publishing.
 
 ## Files
 - `index.html` – page structure
 - `style.css` – themes and layout
 - `app.js` – PDF parsing, chapters, library and reader
-- `assets/` – background images
+- `assets/` – library header image
