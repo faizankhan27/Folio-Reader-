@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#140C08">
+<title>Folio – PDF Reader</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📖%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="hb" data-v="lib">
+  <button id="back" class="t">Library</button>
+  <div id="ttl">Folio</div>
+  <div class="r"><button id="toc" class="t">Contents</button><button id="aa" class="t" aria-label="Reading settings">Aa</button></div>
+  <div id="bar"></div>
+</header>
+
+<main id="lib">
+  <section class="hero">
+    <h1>Folio</h1>
+    <p class="lede">Your PDFs, re-set as books.</p>
+    <input id="f" class="pick" type="file" accept=".pdf,application/pdf" multiple aria-label="Add a PDF">
+  </section>
+  <div class="wrap">
+    <p id="st" role="status"></p>
+    <ul id="shelf"></ul>
+    <p class="note">Books are saved in this browser on this device. On a phone, the file picker can also open PDFs from Google Drive.</p>
+  </div>
+</main>
+
+<main id="read" hidden><article id="book"></article></main>
+
+<aside id="tp" class="pn" hidden><ul id="tl"></ul></aside>
+<aside id="sp" class="pn" hidden>
+  <h4>Theme</h4>
+  <div class="seg"><button data-t="light">Parchment</button><button data-t="sepia">Mahogany</button><button data-t="dark">Midnight</button></div>
+  <h4>Text size</h4><input id="fs" type="range" min="15" max="30" step="1">
+  <h4>Line spacing</h4><input id="ls" type="range" min="1.4" max="2" step="0.05">
+  <h4>Page width</h4><input id="mw" type="range" min="24" max="42" step="1">
+</aside>
+
+<script src="app.js"></script>
+</body>
+</html>
