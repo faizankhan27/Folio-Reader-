@@ -2,8 +2,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cur=null,M={bm:[],hl:[]},page=0,total=1,Vw=1,tab="c",libBks=[],db=null,mem={},tm=0;
-const FONTS={serif:'Literata,Georgia,serif',classic:'Georgia,"Times New Roman",serif',sans:'system-ui,-apple-system,"Segoe UI",sans-serif'};
-let S=Object.assign({theme:null,mode:"page",font:"serif",size:19,lh:1.75,w:34,just:false},LS.get("folio.s2",{}));
+const FONTS={garamond:'"EB Garamond",Garamond,Georgia,serif',serif:'Literata,Georgia,serif',classic:'Georgia,"Times New Roman",serif',sans:'system-ui,-apple-system,"Segoe UI",sans-serif'};
+let S=Object.assign({theme:null,mode:"page",font:"garamond",size:21,lh:1.5,w:32,just:true},LS.get("folio.s3",{}));
 /* storage: meta store (light) + books store (text) */
 const idb=()=>new Promise(res=>{try{const r=indexedDB.open("folio",2);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});if(!d.objectStoreNames.contains("meta"))d.createObjectStore("meta",{keyPath:"id"})};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
 const tx=(s,m)=>db.transaction(s,m).objectStore(s);
@@ -29,7 +29,7 @@ function applyS(){
   document.querySelectorAll("[data-m]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===S.mode));
   document.querySelectorAll("[data-f]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f===S.font));
   $("#jt").setAttribute("aria-pressed",S.just);
-  LS.set("folio.s2",S);if(cur)layout(a);
+  LS.set("folio.s3",S);if(cur)layout(a);
 }
 /* PDF -> chapters */
 const med=a=>{a=[...a].sort((x,y)=>x-y);return a[a.length>>1]||0};
@@ -45,7 +45,7 @@ async function parse(buf,name,say){
       if(cur&&Math.abs(y-cur.y)<Math.max(2,cur.h*.5)){cur.t+=it.str;cur.h=Math.max(cur.h,h)}
       else{cur={t:it.str,y,h};lines.push(cur)}
     }
-    pages.push(lines.map(l=>({t:l.t.replace(/\s+/g," ").trim(),y:l.y,h:l.h})).filter(l=>l.t));
+    pages.push(lines.map(l=>({t:l.t.replace(/\s+/g," ").trim().replace(/\b([A-Za-z]{3,})\1\b/gi,(m,a)=>m.slice(0,a.length)===m.slice(a.length)?m:a),y:l.y,h:l.h})).filter(l=>l.t));
     if(i%8===0){say(i,N);await new Promise(r=>setTimeout(r))}
   }
   const flat=pages.flat();
@@ -68,7 +68,7 @@ async function parse(buf,name,say){
       }
       pb=null;
       const prev=i?ls[i-1]:null,brk=prev&&Math.abs(prev.y-l.y)>g*1.45,lm=l.t.match(/^(?:[•●▪◦·*]|-|\d{1,2}[.)])\s+/);
-      if(lm){para={k:"li",o:/\d/.test(lm[0]),t:l.t.slice(lm[0].length)};blocks.push(para)}
+      if(lm){para={k:"li",o:/\d/.test(lm[0]),n:/\d/.test(lm[0])?parseInt(lm[0]):null,t:l.t.slice(lm[0].length)};blocks.push(para)}
       else if(para&&!brk){para.t=/[a-z]-$/.test(para.t)?para.t.slice(0,-1)+l.t:para.t+" "+l.t}
       else{para={k:"p",t:l.t};blocks.push(para)}
       if(/[.!?”"’')\]]$/.test(l.t)&&l.t.length<maxC*.62)para=null;
@@ -84,7 +84,7 @@ async function parse(buf,name,say){
       if(c&&!c.b.length)c.t=(c.t+" "+b.t).trim();
       else if(isC){c={t:b.t,b:[]};chs.push(c)}
       else{fmc();c.b.push(["h",b.t])}
-    }else{fmc();c.b.push([b.k,b.t,b.o])}
+    }else{fmc();c.b.push([b.k,b.t,b.o,b.n])}
   });
   chs.forEach(x=>{x.b=x.b.filter(([k,t])=>!(k==="p"&&(t.match(/\bchapter\b/gi)||[]).length>=5))});
   let cover="";
@@ -93,7 +93,8 @@ async function parse(buf,name,say){
 }
 
 const JUNK=/^(table of contents|contents|acknowledg\w*|also by|about the author|praise|copyright|dedication|title page|permissions|front matter|epigraph|other books|books by|by the same author)/i;
-function keep(chs,name){const ok=chs.filter(x=>x.b.length);let o=ok.filter(x=>!x.fm&&!JUNK.test(x.t));if(!o.length)o=ok.map(x=>({...x,fm:0,t:x.fm?name:x.t}));return o}
+function fixLists(c){c.b=c.b.map((e,i,a)=>{const [k,t,o,n]=e,nx=a[i+1];return k==="li"&&o&&t.length<=70&&!/[.!?]$/.test(t)&&nx&&nx[0]==="p"?["h",(n!=null?n+". ":"")+t]:e})}
+function keep(chs,name){const ok=chs.filter(x=>x.b.length);let o=ok.filter(x=>!x.fm&&!JUNK.test(x.t));o.forEach(fixLists);if(!o.length)o=ok.map(x=>({...x,fm:0,t:x.fm?name:x.t}));return o}
 const imgCover=f=>new Promise((res,rej)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const w=300,h=Math.round(im.height*w/im.width),c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",.82))};im.onerror=()=>rej(new Error("bad cover"));im.src=u});
 const pickCover=id=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=async()=>{const f=i.files[0];if(!f)return;const b=await getBook(id);if(b){try{b.cover=await imgCover(f);put(b);showLib()}catch(e){$("#st").textContent="Couldn’t use that image."}}};i.click()};
 /* reader: render, highlights, paging */
@@ -103,15 +104,15 @@ function render(bk){
   let h="";
   bk.chapters.forEach((c,i)=>{
     const m=c.t.match(/^((?:chapter|part|book)\s+\w+)[.:\s–—-]+(.+)$/i);
-    h+='<section id="c'+i+'"><header class="op">'+(m?'<span class="lab">'+esc(m[1])+"</span>":"")+"<h2>"+esc(m?m[2]:c.t)+'</h2><i class="orn">❦</i></header>';
-    let first=true,list=null;
+    h+='<section id="c'+i+'"><header class="op"><svg class="orn" viewBox="0 0 120 14" aria-hidden="true"><path d="M4 7C26-3 40 17 60 7S94-3 116 7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="60" cy="7" r="2" fill="currentColor"/></svg>'+(m?'<span class="lab">'+esc(m[1])+":</span>":"")+"<h2>"+esc(m?m[2]:c.t)+"</h2></header>";
+    let first=true,list=null,exp=0;
     const close=()=>{if(list){h+="</"+list+">";list=null}};
-    c.b.forEach(([k,t,o],j)=>{
+    c.b.forEach(([k,t,o,n],j)=>{
       const id='id="b'+i+"_"+j+'"';
-      if(k==="li"){const g=o?"ol":"ul";if(list!==g){close();h+="<"+g+">";list=g}h+="<li "+id+">"+mk(t,hl(i,j))+"</li>";return}
+      if(k==="li"){const g=o?"ol":"ul",st=o&&n!=null;if(list!==g||(st&&n!==exp)){close();h+="<"+g+(st?' start="'+n+'"':"")+">";list=g}exp=(n||0)+1;h+="<li "+id+">"+mk(t,hl(i,j))+"</li>";return}
       close();
       if(k==="h")h+="<h3 "+id+">"+esc(t)+"</h3>";
-      else{h+="<p "+id+(first?' class="f"':"")+">"+mk(t,hl(i,j))+"</p>";first=false}
+      else{h+="<p "+id+(first&&t.length>=80?' class="f"':"")+">"+mk(t,hl(i,j))+"</p>";first=false}
     });
     close();h+="</section>";
   });
@@ -131,14 +132,14 @@ function upd(){
   $("#bm").textContent=id&&M.bm.some(x=>"b"+x.c+"_"+x.b===id)?"★":"☆";
   LS.set("folio.p."+cur.id,f);if(id)LS.set("folio.pos."+cur.id,id);
 }
-function showPage(n){page=Math.max(0,Math.min(total-1,n));document.documentElement.style.setProperty("--tx",-page*Vw+"px");upd()}
+function showPage(n){page=Math.max(0,Math.min(total-1,n));document.documentElement.style.setProperty("--tx",-page*Vw+"px");$("#view").dataset.pg=page+1;$("#view").dataset.run=cur.title;upd()}
 function goTo(id){const el=document.getElementById(id);if(!el)return;if(S.mode==="page")showPage(pageOf(el));else el.scrollIntoView()}
 function layout(anchor){
   if(!cur)return;
   const r=document.documentElement,cs=getComputedStyle(r),pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0,P=(k,v)=>r.style.setProperty(k,v);
   document.body.dataset.mode=S.mode;P("--ta",S.just?"justify":"left");P("--hy",S.just?"auto":"manual");
   if(S.mode==="page"){
-    const m=26,vm=20,cw=Math.min(innerWidth-2*m,S.w*S.size),ph=innerHeight-pt-pb-$("#hb").offsetHeight-52-2*vm;
+    const m=26,vm=40,cw=Math.min(innerWidth-2*m,S.w*S.size),ph=innerHeight-pt-pb-$("#hb").offsetHeight-52-2*vm;
     Vw=cw+2*m;P("--vw",Vw+"px");P("--vh",ph+2*vm+"px");P("--cw",cw+"px");P("--gap",2*m+"px");P("--ph",ph+"px");
   }else P("--vw",Math.min(innerWidth,S.w*S.size+56)+"px");
   requestAnimationFrame(()=>{
