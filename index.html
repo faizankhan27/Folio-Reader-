@@ -13,9 +13,10 @@
 </head>
 <body>
 <header id="hb" data-v="lib">
-  <button id="back" class="t">Library</button>
+  <button id="back" class="t">‹ Library</button>
+  <button id="toc" class="t" aria-label="Contents, bookmarks and highlights">☰</button>
   <div id="ttl">Folio</div>
-  <div class="r"><button id="toc" class="t">Contents</button><button id="aa" class="t" aria-label="Reading settings">Aa</button></div>
+  <div class="r"><button id="bm" class="t" aria-label="Bookmark this page">☆</button><button id="aa" class="t" aria-label="Reading settings">Aa</button></div>
   <div id="bar"></div>
 </header>
 
@@ -30,22 +31,40 @@
   </div></section>
   <div class="wrap">
     <p id="st" role="status"></p>
+    <div class="tools"><input id="q" type="search" placeholder="Search your library" aria-label="Search your library"><select id="so" aria-label="Sort"><option value="r">Recent</option><option value="t">Title A–Z</option></select><span id="cnt"></span></div>
     <ul id="shelf"></ul>
-    <p class="note">Books are saved in this browser on this device. Pick a cover image before the PDF to use it; otherwise the first page becomes the cover. You can change a cover any time.</p>
+    <p id="sto" class="note"></p>
+    <p class="note">Pick a cover image before the PDF to use it; otherwise the first page becomes the cover. Books are saved on this device.</p>
   </div>
 </main>
 
-<main id="read" hidden><article id="book"></article></main>
+<main id="read" hidden><div id="view"><article id="book"></article></div></main>
 
-<aside id="tp" class="pn" hidden><ul id="tl"></ul></aside>
+<nav id="nav" hidden>
+  <button id="prv" aria-label="Previous page">‹</button>
+  <input id="pn" type="number" min="1" inputmode="numeric" aria-label="Page number"><span id="pt">/ 1</span>
+  <button id="nxt" aria-label="Next page">›</button>
+  <i></i>
+  <button id="zo" aria-label="Smaller text">A−</button><button id="zi" aria-label="Larger text">A+</button>
+</nav>
+<div id="hlb" hidden><button id="hlbtn">Highlight</button></div>
+
+<aside id="tp" class="pn" hidden>
+  <div class="tabs"><button data-tab="c">Contents</button><button data-tab="b">Bookmarks</button><button data-tab="h">Highlights</button></div>
+  <ul id="pl"></ul>
+</aside>
 <aside id="sp" class="pn" hidden>
   <h4>Theme</h4>
-  <div class="seg"><button data-t="light">Parchment</button><button data-t="sepia">Mahogany</button><button data-t="dark">Midnight</button></div>
-  <h4>Text size</h4><input id="fs" type="range" min="15" max="30" step="1">
-  <h4>Line spacing</h4><input id="ls" type="range" min="1.4" max="2" step="0.05">
-  <h4>Page width</h4><input id="mw" type="range" min="24" max="42" step="1">
+  <div class="seg"><button data-t="light">Parchment</button><button data-t="dark">Midnight</button></div>
+  <h4>Layout</h4>
+  <div class="seg"><button data-m="page">Pages</button><button data-m="scroll">Scroll</button></div>
+  <h4>Font</h4>
+  <div class="seg"><button data-f="serif">Literata</button><button data-f="classic">Georgia</button><button data-f="sans">Sans</button></div>
+  <h4>Text size</h4><input id="fs" type="range" min="14" max="30" step="1">
+  <h4>Line spacing</h4><input id="ls" type="range" min="1.4" max="2.1" step="0.05">
+  <h4>Page width</h4><input id="mw" type="range" min="22" max="44" step="1">
+  <div class="seg"><button id="jt">Justify text</button></div>
 </aside>
-
 <script src="app.js"></script>
 </body>
 </html>

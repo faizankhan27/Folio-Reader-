@@ -4,8 +4,11 @@ Turns messy PDFs into a clean, book-style reading experience, right in the brows
 
 ## Features
 - Re-flows PDF text into proper paragraphs (removes page numbers, repeated headers/footers, joined hyphenated words)
-- Automatic chapter detection with a table of contents
-- Three themes: Mahogany, Parchment, Midnight
+- Automatic chapter detection with a table of contents; acknowledgements, copyright and similar extras are left out
+- Pages mode (one page at a time, swipe or tap) and Scroll mode, with a page bar like a PDF viewer
+- Bookmarks and text highlights, with an overview panel per book
+- Typography controls: font, size, line spacing, page width, justify
+- Two themes: Parchment and Midnight
 - Adjustable text size, line spacing and page width
 - Library shown as book covers (first page by default, or your own cover image), with reading progress, saved on your device (IndexedDB)
 - Works on phone and laptop browsers
