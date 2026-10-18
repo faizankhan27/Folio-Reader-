@@ -5,7 +5,7 @@ let cur=null,M={bm:[],hl:[]},page=0,total=1,Vw=1,tab="c",libBks=[],db=null,mem={
 const FONTS={garamond:'"EB Garamond",Garamond,Georgia,serif',serif:'Literata,Georgia,serif',classic:'Georgia,"Times New Roman",serif',sans:'system-ui,-apple-system,"Segoe UI",sans-serif'};
 let S=Object.assign({theme:null,mode:"page",font:"garamond",size:21,lh:1.5,w:32,just:true},LS.get("folio.s3",{}));
 /* storage: meta store (light) + books store (text) */
-const idb=()=>new Promise(res=>{try{const r=indexedDB.open("folio",2);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});if(!d.objectStoreNames.contains("meta"))d.createObjectStore("meta",{keyPath:"id"})};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
+const idb=()=>new Promise(res=>{try{const r=indexedDB.open("folio",3);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});if(!d.objectStoreNames.contains("meta"))d.createObjectStore("meta",{keyPath:"id"});if(!d.objectStoreNames.contains("ocr"))d.createObjectStore("ocr",{keyPath:"key"})};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
 const tx=(s,m)=>db.transaction(s,m).objectStore(s);
 const req=r=>new Promise(res=>{r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)});
 const metaOf=b=>({id:b.id,title:b.title,pages:b.pages,cover:b.cover,added:b.added,n:b.chapters.length});
@@ -46,10 +46,10 @@ async function parse(buf,name,say){
       else{cur={t:it.str,y,h};lines.push(cur)}
     }
     pages.push(lines.map(l=>({t:l.t.replace(/\s+/g," ").trim().replace(/\b([A-Za-z]{3,})\1\b/gi,(m,a)=>m.slice(0,a.length)===m.slice(a.length)?m:a),y:l.y,h:l.h})).filter(l=>l.t));
-    if(i%8===0){say(i,N);await new Promise(r=>setTimeout(r))}
+    if(i===30&&!pages.flat().length)break;if(i%8===0){say(i,N);await new Promise(r=>setTimeout(r))}
   }
   const flat=pages.flat();
-  if(flat.reduce((n,l)=>n+l.t.length,0)<200)throw new Error("no text");
+  if(flat.reduce((n,l)=>n+l.t.length,0)<200)return ocrBook(pdf,name,say,name+"|"+buf.byteLength,N);
   const bodyH=med(flat.map(l=>l.h)),maxC=med(flat.map(l=>l.t.length))*1.15;
   /* drop running headers, footers and page numbers */
   const key=t=>t.replace(/\d+/g,"#"),cnt={},lim=Math.max(3,N*.3);
@@ -75,6 +75,15 @@ async function parse(buf,name,say){
     });
   });
   /* group into chapters */
+  const chs=assemble(blocks,bodyH);
+  const cover=await coverOf(pdf);
+  return{title:name,pages:N,cover,chapters:keep(chs,name),added:Date.now()};
+}
+
+const JUNK=/^(table of contents|contents|acknowledg\w*|also by|about the author|praise|copyright|dedication|title page|permissions|front matter|epigraph|other books|books by|by the same author)/i;
+function fixLists(c){c.b=c.b.map((e,i,a)=>{const [k,t,o,n]=e,nx=a[i+1];return k==="li"&&o&&t.length<=70&&!/[.!?]$/.test(t)&&nx&&nx[0]==="p"?["h",(n!=null?n+". ":"")+t]:e})}
+function keep(chs,name){const ok=chs.filter(x=>x.b.length);let o=ok.filter(x=>!x.fm&&!JUNK.test(x.t));o.forEach(fixLists);if(!o.length)o=ok.map(x=>({...x,fm:0,t:x.fm?name:x.t}));return o}
+function assemble(blocks,bodyH){
   const re=/^(chapter|part|book|section|prologue|epilogue|introduction|preface|foreword|afterword|acknowledg)/i;
   const chs=[];let c=null;
   const fmc=()=>{if(!c){c={t:"Front matter",b:[],fm:1};chs.push(c)}};
@@ -87,14 +96,50 @@ async function parse(buf,name,say){
     }else{fmc();c.b.push([b.k,b.t,b.o,b.n])}
   });
   chs.forEach(x=>{x.b=x.b.filter(([k,t])=>!(k==="p"&&(t.match(/\bchapter\b/gi)||[]).length>=5))});
-  let cover="";
-  try{const p1=await pdf.getPage(1),v0=p1.getViewport({scale:1}),vp=p1.getViewport({scale:300/v0.width}),cv=document.createElement("canvas");cv.width=vp.width;cv.height=vp.height;await p1.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;cover=cv.toDataURL("image/jpeg",.72)}catch(e){}
-  return{title:name,pages:N,cover,chapters:keep(chs,name),added:Date.now()};
+  return chs;
 }
-
-const JUNK=/^(table of contents|contents|acknowledg\w*|also by|about the author|praise|copyright|dedication|title page|permissions|front matter|epigraph|other books|books by|by the same author)/i;
-function fixLists(c){c.b=c.b.map((e,i,a)=>{const [k,t,o,n]=e,nx=a[i+1];return k==="li"&&o&&t.length<=70&&!/[.!?]$/.test(t)&&nx&&nx[0]==="p"?["h",(n!=null?n+". ":"")+t]:e})}
-function keep(chs,name){const ok=chs.filter(x=>x.b.length);let o=ok.filter(x=>!x.fm&&!JUNK.test(x.t));o.forEach(fixLists);if(!o.length)o=ok.map(x=>({...x,fm:0,t:x.fm?name:x.t}));return o}
+async function coverOf(pdf){let cover="";
+  try{const p1=await pdf.getPage(1),v0=p1.getViewport({scale:1}),vp=p1.getViewport({scale:300/v0.width}),cv=document.createElement("canvas");cv.width=vp.width;cv.height=vp.height;await p1.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;cover=cv.toDataURL("image/jpeg",.72)}catch(e){}
+  return cover}
+/* scanned books: OCR with Tesseract.js, resumable */
+const loadScript=u=>new Promise((res,rej)=>{const e=document.createElement("script");e.src=u;e.onload=res;e.onerror=()=>rej(new Error("couldn’t load the text-recognition engine"));document.head.appendChild(e)});
+const ocrGet=k=>db?req(tx("ocr").get(k)):Promise.resolve(null);
+const ocrPut=(k,v)=>{if(db)try{tx("ocr","readwrite").put({key:k,...v})}catch(e){}};
+const ocrDel=k=>{if(db)try{tx("ocr","readwrite").delete(k)}catch(e){}};
+async function ocrBook(pdf,name,say,key,N){
+  if(!window.Tesseract)await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  const texts=((await ocrGet(key))||{}).texts||[];
+  const nw=Math.min(3,Math.max(1,(navigator.hardwareConcurrency||4)>>1)),sch=Tesseract.createScheduler();
+  let wl=null;try{wl=await navigator.wakeLock.request("screen")}catch(e){}
+  say(texts.length,N,"Reading text from");
+  try{
+    for(let i=0;i<nw;i++)sch.addWorker(await Tesseract.createWorker("eng"));
+    for(let s=texts.length;s<N;s+=nw*2){
+      const ids=[];for(let n=s+1;n<=Math.min(N,s+nw*2);n++)ids.push(n);
+      const out=await Promise.all(ids.map(async n=>{const pg=await pdf.getPage(n),v0=pg.getViewport({scale:1}),vp=pg.getViewport({scale:1100/v0.width}),c=document.createElement("canvas");c.width=vp.width;c.height=vp.height;await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;const r=await sch.addJob("recognize",c);c.width=c.height=1;return r.data.text||""}));
+      texts.push(...out);ocrPut(key,{texts});say(texts.length,N,"Reading text from");
+    }
+  }finally{try{await sch.terminate()}catch(e){}try{wl&&wl.release()}catch(e){}}
+  ocrDel(key);
+  const bk=ocrToBook(texts,name,N);bk.cover=await coverOf(pdf);return bk;
+}
+function ocrToBook(texts,name,N){
+  const pages=texts.map(t=>t.replace(/\r/g,"").split(/\n\s*\n/).map(p=>p.split("\n").map(l=>l.trim()).filter(Boolean)).filter(p=>p.length));
+  const key=t=>t.replace(/\d+/g,"#"),cnt={},lim=Math.max(3,N*.25);
+  pages.forEach(p=>{if(p.length)[p[0][0],p[p.length-1].slice(-1)[0]].forEach(x=>cnt[key(x)]=(cnt[key(x)]||0)+1)});
+  const blocks=[];let para=null;
+  pages.forEach(p=>p.forEach((ls,pi)=>{
+    ls=ls.slice();
+    if(pi===0&&(cnt[key(ls[0])]>=lim||/^\d{1,4}$/.test(ls[0])))ls.shift();
+    if(pi===p.length-1&&ls.length&&(cnt[key(ls[ls.length-1])]>=lim||/^(\d{1,4}|[ivxlc]{1,6})$/i.test(ls[ls.length-1])))ls.pop();
+    if(!ls.length)return;
+    const t=ls.join(" ").replace(/([a-z])-\s+(?=[a-z])/g,"$1").replace(/\s+/g," "),caps=t===t.toUpperCase()&&/[A-Z]{3}/.test(t);
+    if(t.length<=70&&!/[.,;:]$/.test(t)&&(caps||/^(chapter|part|book)\s+\w+/i.test(t)||/^(\d{1,3}|[ivxlc]{1,6})\.?$/i.test(t))){blocks.push({k:"h",t,h:caps&&pi===0?2:0});para=null;return}
+    if(para&&pi===0&&!/[.!?”"’')]$/.test(para.t)&&/^[a-z]/.test(t))para.t+=" "+t;
+    else{para={k:"p",t};blocks.push(para)}
+  }));
+  return{title:name,pages:N,cover:"",chapters:keep(assemble(blocks,1),name),added:Date.now()};
+}
 const imgCover=f=>new Promise((res,rej)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const w=300,h=Math.round(im.height*w/im.width),c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",.82))};im.onerror=()=>rej(new Error("bad cover"));im.src=u});
 const pickCover=id=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=async()=>{const f=i.files[0];if(!f)return;const b=await getBook(id);if(b){try{b.cover=await imgCover(f);put(b);showLib()}catch(e){$("#st").textContent="Couldn’t use that image."}}};i.click()};
 /* reader: render, highlights, paging */
@@ -170,19 +215,19 @@ function drawLib(){
   $("#shelf").innerHTML=bs.length?bs.map(card).join(""):'<li class="empty">'+(libBks.length?"No books match your search.":"Your shelf is empty. Add a PDF to start reading.")+"</li>";
 }
 async function addFiles(fl){
-  const st=$("#st"),cf=$("#cv").files[0];
+  const st=$("#st"),cf=$("#cv").files[0];let bad="";
   for(const f of fl){
     if(!/pdf/i.test(f.type+f.name))continue;
     if(!window.pdfjsLib){st.textContent="The PDF engine didn’t load. Check your connection and reload.";return}
     try{
       st.textContent="Reading "+f.name+"…";
-      const bk=await parse(await f.arrayBuffer(),f.name.replace(/\.pdf$/i,""),(i,n)=>st.textContent="Reading page "+i+" of "+n+"…");
+      const bk=await parse(await f.arrayBuffer(),f.name.replace(/\.pdf$/i,""),(i,n,m)=>st.textContent=(m||"Reading")+" page "+i+" of "+n+(m?". Scanned book: keep this tab open. Progress is saved, so adding the same file again resumes.":"…"));
       if(cf){try{bk.cover=await imgCover(cf)}catch(e){}}
-      bk.id=Date.now().toString(36);put(bk);$("#cv").value="";st.textContent="";
+      bk.id=Date.now().toString(36);put(bk);$("#cv").value="";$("#cvl").textContent="Add cover";st.textContent="";
       if(fl.length===1)return openBook(bk.id);
-    }catch(e){st.textContent="Couldn’t read "+f.name+" ("+(e&&e.message||e)+"). Scanned PDFs with no selectable text aren’t supported yet."}
+    }catch(e){bad="Couldn’t read "+f.name+" ("+(e&&e.message||e)+")."}
   }
-  st.textContent="";showLib();
+  st.textContent=bad;showLib();
 }
 /* panel: contents / bookmarks / highlights */
 function fillPanel(){
@@ -228,7 +273,7 @@ $("#pl").onclick=e=>{
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;fillPanel()});
 /* wiring */
 $("#f").onchange=e=>{addFiles([...e.target.files]);e.target.value=""};
-$("#cv").onchange=e=>{const f=e.target.files[0];$("#st").textContent=f?"Cover ready: "+f.name+". Now choose the PDF.":""};
+$("#cv").onchange=e=>{const f=e.target.files[0];$("#st").textContent=f?"Cover ready: "+f.name+". Now choose the PDF.":"";$("#cvl").textContent=f?"Cover ✓":"Add cover"};
 $("#q").oninput=drawLib;$("#so").onchange=drawLib;
 $("#back").onclick=showLib;$("#toc").onclick=()=>pan("#tp");$("#aa").onclick=()=>pan("#sp");
 $("#shelf").onclick=e=>{

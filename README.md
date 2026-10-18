@@ -24,7 +24,7 @@ It's a static site with no build step. Open `index.html` in a browser, or host i
 
 ## Notes
 - Needs an internet connection to load the PDF.js library and Google Fonts from CDNs.
-- Scanned PDFs without selectable text are not supported yet (would need OCR).
+- Scanned PDFs (no selectable text) are read with OCR (Tesseract.js, loaded from a CDN on first use). This is slow: expect several minutes on a laptop and much longer on a phone for a 400+ page book. Keep the tab open; progress is saved, and adding the same file again resumes.
 - Books are stored in the browser on that device. Google Drive sync is not included yet.
 - `assets/shelves.jpg` is the library header photo; replace it with an image you have the rights to use before publishing.
 

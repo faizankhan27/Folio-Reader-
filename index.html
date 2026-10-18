@@ -25,9 +25,10 @@
     <h1>Folio</h1>
     <p class="lede">Your PDFs, re-set as books.</p>
     <div class="adds">
-      <label>PDF<input id="f" class="pick" type="file" accept=".pdf,application/pdf" multiple></label>
-      <label>Cover (optional)<input id="cv" class="pick alt" type="file" accept="image/*"></label>
+      <div class="ab alt"><span id="cvl">Add cover</span><input id="cv" type="file" accept="image/*" aria-label="Choose a cover image (optional)"></div>
+      <div class="ab"><span>Add PDF</span><input id="f" type="file" accept=".pdf,application/pdf" multiple aria-label="Add a PDF"></div>
     </div>
+    <p class="hint">Optional: pick a cover first, then your PDF.</p>
   </div></section>
   <div class="wrap">
     <p id="st" role="status"></p>
