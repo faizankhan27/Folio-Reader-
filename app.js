@@ -1,14 +1,14 @@
 const $=s=>document.querySelector(s);
 const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-let cur=null,M={bm:[],hl:[]},page=0,total=1,Vw=1,tab="c",libBks=[],db=null,mem={},tm=0;
+let cur=null,M={bm:[],hl:[]},page=0,total=1,Vw=1,tab="c",libBks=[],db=null,mem={},tm=0,view="flow",opdf=null,oZ=1,oIO=null,curO=0,oq=Promise.resolve();
 const FONTS={garamond:'"EB Garamond",Garamond,Georgia,serif',serif:'Literata,Georgia,serif',classic:'Georgia,"Times New Roman",serif',sans:'system-ui,-apple-system,"Segoe UI",sans-serif'};
 let S=Object.assign({theme:null,mode:"page",font:"garamond",size:21,lh:1.5,w:32,just:true},LS.get("folio.s3",{}));
 /* storage: meta store (light) + books store (text) */
-const idb=()=>new Promise(res=>{try{const r=indexedDB.open("folio",3);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});if(!d.objectStoreNames.contains("meta"))d.createObjectStore("meta",{keyPath:"id"});if(!d.objectStoreNames.contains("ocr"))d.createObjectStore("ocr",{keyPath:"key"})};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
+const idb=()=>new Promise(res=>{try{const r=indexedDB.open("folio",4);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});if(!d.objectStoreNames.contains("meta"))d.createObjectStore("meta",{keyPath:"id"});if(!d.objectStoreNames.contains("ocr"))d.createObjectStore("ocr",{keyPath:"key"});if(!d.objectStoreNames.contains("files"))d.createObjectStore("files",{keyPath:"id"})};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
 const tx=(s,m)=>db.transaction(s,m).objectStore(s);
 const req=r=>new Promise(res=>{r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)});
-const metaOf=b=>({id:b.id,title:b.title,pages:b.pages,cover:b.cover,added:b.added,n:b.chapters.length});
+const metaOf=b=>({id:b.id,title:b.title,pages:b.pages,cover:b.cover,added:b.added,n:b.chapters.length,scan:!!b.scan&&!b.chapters.length});
 async function metas(){
   if(!db)return Object.values(mem).map(metaOf);
   let m=(await req(tx("meta").getAll()))||[];
@@ -17,7 +17,7 @@ async function metas(){
 }
 const getBook=async id=>db?await req(tx("books").get(id)):mem[id];
 function put(b){if(!db){mem[b.id]=b;return}try{const t=db.transaction(["books","meta"],"readwrite");t.objectStore("books").put(b);t.objectStore("meta").put(metaOf(b))}catch(e){}}
-function del(id){delete mem[id];if(db)try{const t=db.transaction(["books","meta"],"readwrite");t.objectStore("books").delete(id);t.objectStore("meta").delete(id)}catch(e){}}
+function del(id){delete mem[id];if(db)try{const t=db.transaction(["books","meta","files"],"readwrite");t.objectStore("books").delete(id);t.objectStore("meta").delete(id);t.objectStore("files").delete(id)}catch(e){}}
 async function storage(){try{const e=await navigator.storage.estimate(),mb=e.usage/1048576;$("#sto").textContent="Library storage: "+(mb<10?mb.toFixed(1):Math.round(mb))+" MB used of about "+(e.quota/1073741824).toFixed(1)+" GB available on this device."}catch(x){}}
 const saveM=()=>LS.set("folio.m."+cur.id,M);
 /* settings */
@@ -27,9 +27,10 @@ function applyS(){
   r.dataset.theme=t;r.style.setProperty("--fs",S.size+"px");r.style.setProperty("--lh",S.lh);r.style.setProperty("--ff",FONTS[S.font]);
   document.querySelectorAll("[data-t]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.t===t));
   document.querySelectorAll("[data-m]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===S.mode));
-  document.querySelectorAll("[data-f]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f===S.font));
+  document.querySelectorAll("[data-vw]").forEach(b=>b.onclick=()=>setView(b.dataset.vw));
+document.querySelectorAll("[data-f]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f===S.font));
   $("#jt").setAttribute("aria-pressed",S.just);
-  LS.set("folio.s3",S);if(cur)layout(a);
+  LS.set("folio.s3",S);if(cur&&view==="flow")layout(a);
 }
 /* PDF -> chapters */
 const med=a=>{a=[...a].sort((x,y)=>x-y);return a[a.length>>1]||0};
@@ -49,7 +50,7 @@ async function parse(buf,name,say){
     if(i===30&&!pages.flat().length)break;if(i%8===0){say(i,N);await new Promise(r=>setTimeout(r))}
   }
   const flat=pages.flat();
-  if(flat.reduce((n,l)=>n+l.t.length,0)<200)return ocrBook(pdf,name,say,name+"|"+buf.byteLength,N);
+  if(flat.reduce((n,l)=>n+l.t.length,0)<200)return{title:name,pages:N,cover:await coverOf(pdf),chapters:[],scan:true,added:Date.now()};
   const bodyH=med(flat.map(l=>l.h)),maxC=med(flat.map(l=>l.t.length))*1.15;
   /* drop running headers, footers and page numbers */
   const key=t=>t.replace(/\d+/g,"#"),cnt={},lim=Math.max(3,N*.3);
@@ -168,7 +169,7 @@ function curEl(){const els=document.querySelectorAll("#book [id^=b]"),top=$("#hb
 const curId=()=>{const e=cur&&curEl();return e?e.id:null};
 const parseId=id=>id.slice(1).split("_").map(Number);
 function upd(){
-  if(!cur)return;
+  if(!cur)return;if(view==="orig")return updO();
   const el=curEl(),id=el&&el.id,c=id?parseId(id)[0]:0;let f;
   if(S.mode==="page"){f=total>1?page/(total-1):0;$("#pn").value=page+1;$("#pt").textContent="/ "+total}
   else{const d=document.documentElement,h=innerHeight;f=Math.min(1,scrollY/Math.max(1,d.scrollHeight-h));const n=Math.max(1,Math.round(d.scrollHeight/h));$("#pn").value=Math.min(n,Math.floor(scrollY/h)+1);$("#pt").textContent="/ "+n}
@@ -178,7 +179,7 @@ function upd(){
   LS.set("folio.p."+cur.id,f);if(id)LS.set("folio.pos."+cur.id,id);
 }
 function showPage(n){page=Math.max(0,Math.min(total-1,n));document.documentElement.style.setProperty("--tx",-page*Vw+"px");$("#view").dataset.pg=page+1;$("#view").dataset.run=cur.title;upd()}
-function goTo(id){const el=document.getElementById(id);if(!el)return;if(S.mode==="page")showPage(pageOf(el));else el.scrollIntoView()}
+function goTo(id){if(view==="orig"){if(id.startsWith("b-1_"))goO(parseId(id)[1]);return}const el=document.getElementById(id);if(!el)return;if(S.mode==="page")showPage(pageOf(el));else el.scrollIntoView()}
 function layout(anchor){
   if(!cur)return;
   const r=document.documentElement,cs=getComputedStyle(r),pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0,P=(k,v)=>r.style.setProperty(k,v);
@@ -198,16 +199,71 @@ function layout(anchor){
 async function openBook(id){
   const bk=await getBook(id);if(!bk)return;
   cur=bk;M=LS.get("folio.m."+id,{bm:[],hl:[]});render(bk);closePanels();
-  $("#lib").hidden=true;$("#read").hidden=false;$("#nav").hidden=false;$("#hb").dataset.v="read";
-  scrollTo(0,0);applyS();
+  const f=await getFile(id);view=bk.chapters.length?(f?LS.get("folio.v."+id,"flow"):"flow"):"orig";
+  $("#lib").hidden=true;$("#nav").hidden=false;$("#hb").dataset.v="read";$("#vn").textContent="";
+  scrollTo(0,0);await enter();
+}
+async function enter(){
+  $("#read").hidden=view==="orig";$("#orig").hidden=view!=="orig";$("#hlb").hidden=true;
+  document.querySelectorAll("[data-vw]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.vw===view));
+  if(view==="orig"){delete document.body.dataset.mode;await showOrig()}
+  else{if(opdf){opdf.destroy();opdf=null}scrollTo(0,0);applyS()}
+}
+async function setView(v){
+  if(!cur||v===view)return;
+  if(v==="flow"&&!cur.chapters.length){$("#vn").textContent="This scanned book isn’t converted to text yet. Use “Convert to text” on its library card.";return}
+  if(v==="orig"&&!(await getFile(cur.id))){$("#vn").textContent="The original PDF wasn’t saved for this book. Add it again to read it as a PDF.";return}
+  $("#vn").textContent="";view=v;LS.set("folio.v."+cur.id,v);closePanels();await enter();
+}
+const getFile=async id=>{if(!db)return null;const r=await req(tx("files").get(id));return r&&r.blob||null};
+const putFile=(id,blob)=>{if(db)try{tx("files","readwrite").put({id,blob})}catch(e){}};
+async function showOrig(){
+  const box=$("#opages");
+  try{
+    if(!window.pdfjsLib)throw new Error("PDF engine not loaded");
+    if(opdf){opdf.destroy();opdf=null}
+    opdf=await pdfjsLib.getDocument({data:await(await getFile(cur.id)).arrayBuffer()}).promise;
+    await origLayout();
+  }catch(e){box.innerHTML='<p class="none2">Couldn’t open the original PDF ('+esc(String(e&&e.message||e))+").</p>"}
+}
+async function origLayout(){
+  const p1=await opdf.getPage(1),v0=p1.getViewport({scale:1}),w=Math.min(innerWidth-16,900)*oZ,h=w*v0.height/v0.width,N=opdf.numPages,box=$("#opages");
+  box.style.setProperty("--ow",w+"px");box.style.setProperty("--oh",h+"px");
+  box.innerHTML=Array.from({length:N},(_,i)=>'<div class="pgo" data-p="'+i+'"><canvas></canvas></div>').join("");
+  if(oIO)oIO.disconnect();
+  oIO=new IntersectionObserver(es=>es.forEach(e=>{const d=e.target;if(e.isIntersecting)queueP(d);else{const c=d.firstChild;if(c&&c.width>1)c.width=c.height=1;d._r=0}}),{rootMargin:"150% 0px"});
+  box.querySelectorAll(".pgo").forEach(d=>oIO.observe(d));
+  const p=LS.get("folio.po."+cur.id,0);
+  requestAnimationFrame(()=>{if(box.children[p])box.children[p].scrollIntoView();updO()});
+}
+const queueP=d=>{if(d._r)return;d._r=1;oq=oq.then(async()=>{if(!d.isConnected||!d._r||!opdf)return;const pg=await opdf.getPage(+d.dataset.p+1),dpr=Math.min(2,devicePixelRatio||1),vp=pg.getViewport({scale:d.clientWidth*dpr/pg.getViewport({scale:1}).width}),c=d.firstChild;c.width=vp.width;c.height=vp.height;await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise}).catch(()=>{})};
+const goO=n=>{const c=$("#opages").children[Math.max(0,Math.min(opdf.numPages-1,n))];if(c)c.scrollIntoView()};
+function updO(){
+  if(!cur||!opdf)return;
+  const box=$("#opages"),N=opdf.numPages,k=box.children,st=k.length>1?k[1].offsetTop-k[0].offsetTop:k[0].offsetHeight;
+  curO=Math.max(0,Math.min(N-1,Math.floor((scrollY+innerHeight*.35-box.offsetTop)/st)));
+  $("#pn").value=curO+1;$("#pt").textContent="/ "+N;$("#bar").style.transform="scaleX("+(N>1?curO/(N-1):0)+")";
+  $("#ttl").textContent=cur.title;$("#bm").textContent=M.bm.some(x=>x.c===-1&&x.b===curO)?"★":"☆";
+  LS.set("folio.po."+cur.id,curO);LS.set("folio.p."+cur.id,N>1?curO/(N-1):0);
+}
+async function convertBook(id){
+  const st=$("#st"),b=await getBook(id),f=await getFile(id);
+  if(!b||!f){st.textContent="Add this PDF again to convert it (the original file wasn’t saved).";return}
+  try{
+    const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+    const r=await ocrBook(pdf,b.title,(i,n)=>st.textContent="Reading text from page "+i+" of "+n+". Keep this tab open; progress is saved.",b.title+"|"+f.size,pdf.numPages);
+    if(!r.chapters.length)throw new Error("no text found");
+    b.chapters=r.chapters;b.scan=false;put(b);st.textContent="Done. “"+b.title+"” can now be read as a book.";
+  }catch(e){st.textContent="Couldn’t convert "+b.title+" ("+(e&&e.message||e)+"). Tap Convert again to resume."}
+  showLib();
 }
 async function showLib(){
-  cur=null;closePanels();$("#read").hidden=true;$("#nav").hidden=true;$("#hlb").hidden=true;$("#lib").hidden=false;$("#hb").dataset.v="lib";delete document.body.dataset.mode;
+  cur=null;closePanels();if(opdf){opdf.destroy();opdf=null}$("#orig").hidden=true;$("#read").hidden=true;$("#nav").hidden=true;$("#hlb").hidden=true;$("#lib").hidden=false;$("#hb").dataset.v="lib";delete document.body.dataset.mode;
   $("#ttl").textContent="Folio";$("#bar").style.transform="scaleX(0)";$("#bm").textContent="☆";scrollTo(0,0);
   libBks=await metas();drawLib();storage();
 }
 const spine=t=>{let h=0;for(const c of t)h=(h*31+c.charCodeAt(0))>>>0;return["#6E2A25","#23364A","#2C4A3A","#9A6B34","#4A2B45","#5B3A24"][h%6]};
-const card=b=>'<li class="card" style="--sp:'+spine(b.title)+'"><button class="cv" data-id="'+b.id+'" aria-label="Open '+esc(b.title)+'">'+(b.cover?'<img alt="" loading="lazy" src="'+b.cover+'">':"<i>"+esc(b.title)+"</i>")+'</button><div class="ti">'+esc(b.title)+'</div><div class="pg"><b style="width:'+Math.round(LS.get("folio.p."+b.id,0)*100)+'%"></b></div><div class="acts"><button data-cover="'+b.id+'">Cover</button><button class="rm" data-rm="'+b.id+'">Remove</button></div></li>';
+const card=b=>'<li class="card" style="--sp:'+spine(b.title)+'"><button class="cv" data-id="'+b.id+'" aria-label="Open '+esc(b.title)+'">'+(b.cover?'<img alt="" loading="lazy" src="'+b.cover+'">':"<i>"+esc(b.title)+"</i>")+'</button><div class="ti">'+esc(b.title)+'</div><div class="pg"><b style="width:'+Math.round(LS.get("folio.p."+b.id,0)*100)+'%"></b></div>'+(b.scan?'<div class="tag">Scanned · opens as original</div>':"")+'<div class="acts">'+(b.scan?'<button data-conv="'+b.id+'">Convert to text</button>':"")+'<button data-cover="'+b.id+'">Cover</button><button class="rm" data-rm="'+b.id+'">Remove</button></div></li>';
 function drawLib(){
   const q=$("#q").value.trim().toLowerCase(),t=$("#so").value==="t";
   const bs=libBks.filter(b=>b.title.toLowerCase().includes(q)).sort(t?(a,z)=>a.title.localeCompare(z.title):(a,z)=>z.added-a.added);
@@ -223,7 +279,7 @@ async function addFiles(fl){
       st.textContent="Reading "+f.name+"…";
       const bk=await parse(await f.arrayBuffer(),f.name.replace(/\.pdf$/i,""),(i,n,m)=>st.textContent=(m||"Reading")+" page "+i+" of "+n+(m?". Scanned book: keep this tab open. Progress is saved, so adding the same file again resumes.":"…"));
       if(cf){try{bk.cover=await imgCover(cf)}catch(e){}}
-      bk.id=Date.now().toString(36);put(bk);$("#cv").value="";$("#cvl").textContent="Add cover";st.textContent="";
+      bk.id=Date.now().toString(36);put(bk);putFile(bk.id,f);$("#cv").value="";$("#cvl").textContent="Add cover";st.textContent="";
       if(fl.length===1)return openBook(bk.id);
     }catch(e){bad="Couldn’t read "+f.name+" ("+(e&&e.message||e)+")."}
   }
@@ -231,10 +287,10 @@ async function addFiles(fl){
 }
 /* panel: contents / bookmarks / highlights */
 function fillPanel(){
-  const bm=M.bm.slice().sort((a,z)=>a.c-z.c||a.b-z.b),hs=M.hl.slice().sort((a,z)=>a.c-z.c||a.b-z.b||a.s-z.s);
+  const bm=M.bm.filter(x=>(x.c===-1)===(view==="orig")).sort((a,z)=>a.c-z.c||a.b-z.b),hs=M.hl.slice().sort((a,z)=>a.c-z.c||a.b-z.b||a.s-z.s);
   document.querySelectorAll("[data-tab]").forEach(b=>{const k=b.dataset.tab;b.setAttribute("aria-pressed",k===tab);b.textContent=k==="c"?"Contents":k==="b"?"Bookmarks"+(bm.length?" "+bm.length:""):"Highlights"+(hs.length?" "+hs.length:"")});
   const nm=c=>esc(cur.chapters[c]?cur.chapters[c].t:"");
-  $("#pl").innerHTML=tab==="c"?cur.chapters.map((c,i)=>'<li><button data-g="c'+i+'">'+esc(c.t)+"</button></li>").join(""):
+  $("#pl").innerHTML=view==="orig"&&tab!=="b"?'<li class="none">'+(tab==="c"?"Contents are available in the reflowed view.":"Highlights are made in the reflowed view.")+"</li>":tab==="c"?cur.chapters.map((c,i)=>'<li><button data-g="c'+i+'">'+esc(c.t)+"</button></li>").join(""):
     tab==="b"?(bm.length?bm.map(x=>'<li class="it"><button data-g="b'+x.c+"_"+x.b+'"><small>'+nm(x.c)+"</small>"+esc(x.label)+'…</button><button class="x" data-xb="'+x.c+"_"+x.b+'" aria-label="Remove bookmark">✕</button></li>').join(""):'<li class="none">No bookmarks yet. Tap ☆ at the top to save your place.</li>'):
     (hs.length?hs.map(x=>'<li class="it"><button data-g="b'+x.c+"_"+x.b+'"><small>'+nm(x.c)+'</small><span class="hm">'+esc(x.text)+'</span></button><button class="x" data-xh="'+x.id+'" aria-label="Remove highlight">✕</button></li>').join(""):'<li class="none">Select text in the book, then tap Highlight to mark it. Marked passages collect here.</li>');
 }
@@ -260,7 +316,8 @@ $("#hlbtn").onclick=()=>{
 };
 document.addEventListener("selectionchange",()=>{const s=getSelection();$("#hlb").hidden=!(cur&&s.rangeCount&&!s.isCollapsed&&$("#book").contains(s.anchorNode))});
 $("#bm").onclick=()=>{
-  if(!cur)return;const el=curEl();if(!el)return;const [c,b]=parseId(el.id),ex=M.bm.find(x=>x.c===c&&x.b===b);
+  if(!cur)return;
+  if(view==="orig"){const ex=M.bm.find(x=>x.c===-1&&x.b===curO);if(ex)M.bm=M.bm.filter(x=>x!==ex);else M.bm.push({c:-1,b:curO,label:"Page "+(curO+1),ts:Date.now()});saveM();updO();return}const el=curEl();if(!el)return;const [c,b]=parseId(el.id),ex=M.bm.find(x=>x.c===c&&x.b===b);
   if(ex)M.bm=M.bm.filter(x=>x!==ex);else M.bm.push({c,b,label:cur.chapters[c].b[b][1].slice(0,90),ts:Date.now()});
   saveM();upd();
 };
@@ -277,22 +334,23 @@ $("#cv").onchange=e=>{const f=e.target.files[0];$("#st").textContent=f?"Cover re
 $("#q").oninput=drawLib;$("#so").onchange=drawLib;
 $("#back").onclick=showLib;$("#toc").onclick=()=>pan("#tp");$("#aa").onclick=()=>pan("#sp");
 $("#shelf").onclick=e=>{
-  const o=e.target.closest(".cv"),r=e.target.closest(".rm"),cv=e.target.closest("[data-cover]");
+  const o=e.target.closest(".cv"),r=e.target.closest(".rm"),cv=e.target.closest("[data-cover]"),cn=e.target.closest("[data-conv]");
   if(o)openBook(o.dataset.id);
+  if(cn)convertBook(cn.dataset.conv);
   if(cv)pickCover(cv.dataset.cover);
   if(r){if(r.dataset.arm){del(r.dataset.rm);LS.set("folio.p."+r.dataset.rm,0);showLib()}else{r.dataset.arm=1;r.textContent="Tap again"}}
 };
-$("#prv").onclick=()=>S.mode==="page"?showPage(page-1):scrollBy(0,-innerHeight*.9);
-$("#nxt").onclick=()=>S.mode==="page"?showPage(page+1):scrollBy(0,innerHeight*.9);
-$("#pn").onchange=e=>{const n=Math.max(1,+e.target.value||1);S.mode==="page"?showPage(n-1):scrollTo(0,(n-1)*innerHeight)};
-$("#zo").onclick=()=>{S.size=Math.max(14,S.size-1);$("#fs").value=S.size;applyS()};
-$("#zi").onclick=()=>{S.size=Math.min(30,S.size+1);$("#fs").value=S.size;applyS()};
+$("#prv").onclick=()=>view==="orig"?goO(curO-1):S.mode==="page"?showPage(page-1):scrollBy(0,-innerHeight*.9);
+$("#nxt").onclick=()=>view==="orig"?goO(curO+1):S.mode==="page"?showPage(page+1):scrollBy(0,innerHeight*.9);
+$("#pn").onchange=e=>{const n=Math.max(1,+e.target.value||1);if(view==="orig")goO(n-1);else S.mode==="page"?showPage(n-1):scrollTo(0,(n-1)*innerHeight)};
+$("#zo").onclick=()=>{if(view==="orig"){updO();oZ=Math.max(.6,oZ-.15);origLayout();return}S.size=Math.max(14,S.size-1);$("#fs").value=S.size;applyS()};
+$("#zi").onclick=()=>{if(view==="orig"){updO();oZ=Math.min(2.5,oZ+.15);origLayout();return}S.size=Math.min(30,S.size+1);$("#fs").value=S.size;applyS()};
 $("#view").addEventListener("click",e=>{if(S.mode!=="page"||!getSelection().isCollapsed)return;const x=e.clientX/innerWidth;if(x<.3)showPage(page-1);else if(x>.7)showPage(page+1)});
 let tx0=0,ty0=0;
 $("#view").addEventListener("touchstart",e=>{tx0=e.touches[0].clientX;ty0=e.touches[0].clientY},{passive:true});
 $("#view").addEventListener("touchend",e=>{if(S.mode!=="page"||!getSelection().isCollapsed)return;const dx=e.changedTouches[0].clientX-tx0,dy=e.changedTouches[0].clientY-ty0;if(Math.abs(dx)>60&&Math.abs(dy)<50)showPage(page+(dx<0?1:-1))},{passive:true});
-addEventListener("keydown",e=>{if(!cur||/INPUT|SELECT/.test(e.target.tagName))return;if(["ArrowRight","PageDown"," "].includes(e.key)&&S.mode==="page"){e.preventDefault();showPage(page+1)}if(["ArrowLeft","PageUp"].includes(e.key)&&S.mode==="page")showPage(page-1)});
-addEventListener("scroll",()=>{if(cur&&S.mode==="scroll"){clearTimeout(tm);tm=setTimeout(upd,120)}},{passive:true});
+addEventListener("keydown",e=>{if(!cur||view!=="flow"||/INPUT|SELECT/.test(e.target.tagName))return;if(["ArrowRight","PageDown"," "].includes(e.key)&&S.mode==="page"){e.preventDefault();showPage(page+1)}if(["ArrowLeft","PageUp"].includes(e.key)&&S.mode==="page")showPage(page-1)});
+addEventListener("scroll",()=>{if(cur&&view==="orig"){clearTimeout(tm);tm=setTimeout(updO,100)}else if(cur&&S.mode==="scroll"){clearTimeout(tm);tm=setTimeout(upd,120)}},{passive:true});
 addEventListener("resize",()=>{clearTimeout(tm);tm=setTimeout(()=>cur&&layout(curId()),200)});
 document.addEventListener("click",e=>{if(!e.target.closest(".pn,#toc,#aa"))closePanels()});
 addEventListener("dragover",e=>e.preventDefault());

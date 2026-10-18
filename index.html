@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Cormorant+Garamond:wght@500;600&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <header id="hb" data-v="lib">
@@ -35,9 +35,12 @@
     <div class="tools"><input id="q" type="search" placeholder="Search your library" aria-label="Search your library"><select id="so" aria-label="Sort"><option value="r">Recent</option><option value="t">Title A–Z</option></select><span id="cnt"></span></div>
     <ul id="shelf"></ul>
     <p id="sto" class="note"></p>
+    <p class="note">Folio v8</p>
     <p class="note">Pick a cover image before the PDF to use it; otherwise the first page becomes the cover. Books are saved on this device.</p>
   </div>
 </main>
+
+<main id="orig" hidden><div id="opages"></div></main>
 
 <main id="read" hidden><div id="view"><article id="book"></article></div></main>
 
@@ -57,6 +60,9 @@
 <aside id="sp" class="pn" hidden>
   <h4>Theme</h4>
   <div class="seg"><button data-t="light">Parchment</button><button data-t="dark">Midnight</button></div>
+  <h4>View</h4>
+  <div class="seg"><button data-vw="flow">Reflowed</button><button data-vw="orig">Original PDF</button></div>
+  <p id="vn" class="vn"></p>
   <h4>Layout</h4>
   <div class="seg"><button data-m="page">Pages</button><button data-m="scroll">Scroll</button></div>
   <h4>Font</h4>
@@ -66,6 +72,6 @@
   <h4>Page width</h4><input id="mw" type="range" min="22" max="44" step="1">
   <div class="seg"><button id="jt">Justify text</button></div>
 </aside>
-<script src="app.js"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

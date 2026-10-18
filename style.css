@@ -102,3 +102,10 @@ body[data-mode="page"] .op{margin-top:10vh}
 .ab input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
 .hint{margin:0;font:.72rem system-ui,sans-serif;color:#B8A583}
 .hero>div.in{gap:2.4cqw}
+#orig{background:var(--canvas);padding:.6rem .5rem 5.5rem;overflow-x:auto;min-height:calc(100vh - 3rem)}
+#opages{width:max-content;min-width:100%}
+.pgo{width:var(--ow);height:var(--oh);margin:0 auto .6rem;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.35)}
+.pgo canvas{width:100%;height:100%;display:block}
+.none2{color:var(--mute);padding:1.5rem;text-align:center}
+.tag{font:.7rem system-ui,sans-serif;color:var(--acc)}
+.vn{margin:-.5rem 0 1rem;color:var(--acc);font-size:.8rem;line-height:1.4}
